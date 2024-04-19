@@ -2,7 +2,7 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HalmaBotDriver", "HalmaBotDriver\HalmaBotDriver.csproj", "{F5805A5C-0AD8-4486-8D1B-E15161B370B4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HalmaBot", "HalmaBot\HalmaBot.csproj", "{00C8A70A-C950-4EFA-B51C-0467CFDC1F5A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HalmaGame", "HalmaGame\HalmaGame.csproj", "{00C8A70A-C950-4EFA-B51C-0467CFDC1F5A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HalmaBot\HalmaBot.csproj" />
+    <ProjectReference Include="..\HalmaGame\HalmaGame.csproj" />
   </ItemGroup>
 
 </Project>

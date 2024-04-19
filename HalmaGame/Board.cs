@@ -33,6 +33,23 @@ public class Board
         }
     }
 
+    public IEnumerable<Coord> Coords
+    {
+        get
+        {
+            for (var y = 0; y < BoardSize; y++)
+            {
+                for (var x = 0; x < BoardSize; x++)
+                {
+                    yield return new Coord(x, y);
+                }
+            }
+        }
+    }
+
+    public bool IsInCamp(Coord coord, bool isPlayer1) =>
+        isPlayer1 ? player1Camp[coord.X, coord.Y] : player2Camp[coord.X, coord.Y];
+
     public Piece this[Coord coord]
     {
         get => board[coord.X, coord.Y];
