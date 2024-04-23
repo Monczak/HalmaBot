@@ -6,15 +6,38 @@ public class HalmaBot : IHalmaPlayer
 {
     public event IHalmaPlayer.PickMoveDelegate? MovePicked;
 
+    private TranspositionTable transpositionTable = new();
+
     private object? lockObj = new();
 
     private static class Stats
     {
         public static int NodesVisited { get; set; }
+        public static int TranspositionTableHits { get; set; }
     }
     
     private static class Heuristics
     {
+        public static float SumOfDistances(Board board, bool isPlayer1)
+        {
+            var distSum = 0f;
+            for (var y = 0; y < board.BoardSize; y++)
+            {
+                for (var x = 0; x < board.BoardSize; x++)
+                {
+                    var coord = new Coord(x, y);
+                    if (isPlayer1 && (board[coord] & Piece.Player1) != 0 ||
+                        !isPlayer1 && (board[coord] & Piece.Player2) != 0)
+                    {
+                        var target = isPlayer1 ? new Vector2(board.BoardSize - 1, board.BoardSize - 1) : new Vector2(0, 0);
+                        distSum += (target - new Vector2(x, y)).LengthSquared();
+                    }
+                }    
+            }
+
+            return -distSum;
+        }
+        
         public static float PlayerProgress(Board board, bool isPlayer1)
         {
             var posSum = new Coord(0, 0);
@@ -49,12 +72,14 @@ public class HalmaBot : IHalmaPlayer
         public static float PiecesInOpposingCamp(Board board, bool isPlayer1)
         {
             var sum = 0;
+            var color = isPlayer1 ? Piece.Player1 : Piece.Player2;
+            
             for (var y = 0; y < board.BoardSize; y++)
             {
                 for (var x = 0; x < board.BoardSize; x++)
                 {
                     var coord = new Coord(x, y);
-                    sum += board.IsInCamp(coord, !isPlayer1) ? 1 : 0;
+                    sum += board.IsInCamp(coord, !isPlayer1) && board[coord] == color ? 1 : 0;
                 }
             }
 
@@ -64,13 +89,14 @@ public class HalmaBot : IHalmaPlayer
         public static float PiecesNotInPlayerCamp(Board board, bool isPlayer1)
         {
             var sum = 0;
-
+            var color = isPlayer1 ? Piece.Player1 : Piece.Player2;
+            
             for (var y = 0; y < board.BoardSize; y++)
             {
                 for (var x = 0; x < board.BoardSize; x++)
                 {
                     var coord = new Coord(x, y);
-                    sum += !board.IsInCamp(coord, isPlayer1) ? 1 : 0;
+                    sum += !board.IsInCamp(coord, isPlayer1) && board[coord] == color ? 1 : 0;
                 }
             }
 
@@ -105,10 +131,10 @@ public class HalmaBot : IHalmaPlayer
     private float EvaluateFromPlayer(Board board, bool isPlayer1)
     {
         return
-            Heuristics.PlayerProgress(board, isPlayer1) * 10f
-            + Heuristics.PiecesInOpposingCamp(board, isPlayer1) * 1f
-            // + Heuristics.PiecesEnemyCanJumpOver(board, isPlayer1) * 1f
-            + Heuristics.PiecesNotInPlayerCamp(board, isPlayer1) * 1f;
+            Heuristics.SumOfDistances(board, isPlayer1) * 1f
+            // Heuristics.PlayerProgress(board, isPlayer1) * 1000f
+            + Heuristics.PiecesInOpposingCamp(board, isPlayer1) * 100f
+            + Heuristics.PiecesNotInPlayerCamp(board, isPlayer1) * 100f;
     }
 
     private float Evaluate(Board board, bool isPlayer1)
@@ -120,6 +146,7 @@ public class HalmaBot : IHalmaPlayer
     private (float eval, Move? bestMove) Search(Board board, bool isPlayer1, int depth, float alpha = float.NegativeInfinity, float beta = float.PositiveInfinity)
     {
         Move? bestMove = null;
+        float bestEval = float.NegativeInfinity;
         
         if (depth == 0)
             return (Evaluate(board, isPlayer1), null);
@@ -131,47 +158,86 @@ public class HalmaBot : IHalmaPlayer
         {
             if ((board.GameState & GameState.Ended) != 0)
                 return (float.PositiveInfinity, null);
-            return (0, null);
+            return (float.NegativeInfinity, null);
         }
         
-        for (var i = 0; i < moves.Count; i++)
-        {
-            var (move, _) = moves[i];
-            board.MakeMove(move);
-            var eval = Evaluate(board, isPlayer1);
-            board.UnmakeMove(move);
-            moves[i] = (move, eval);
-        }
-        moves.Sort((m1, m2) => m2.Item2.CompareTo(m1.Item2));
-        
+        OrderMoves(moves);
+
         foreach (var (move, _) in moves)
         {
             board.MakeMove(move);
-            var (eval, _) = Search(board, !isPlayer1, depth - 1, -beta, -alpha);
+            
+            // float eval;
+            // // var hash = Zobrist.Hash(board, isPlayer1);
+            // if (transpositionTable.ContainsKey(board.ZobristKey))
+            // {
+            //     eval = transpositionTable.Query(board.ZobristKey).Eval;
+            //     Stats.TranspositionTableHits++;
+            // }
+            // else
+            // {
+            //     eval = -Search(board, !isPlayer1, depth - 1, -beta, -alpha).eval;
+            //     transpositionTable.RecordState(board, eval);
+            // }
+            
+            var eval = -Search(board, !isPlayer1, depth - 1, -beta, -alpha).eval;
             board.UnmakeMove(move);
             Stats.NodesVisited++;
             
-            if (-eval >= beta)
+            if (eval >= beta)
             {
-                return (beta, null);
+                return (beta, move);
             }
 
-            if (-eval > alpha)
+            if (eval > bestEval)
             {
-                alpha = -eval;
+                bestEval = eval;
                 bestMove = move;
             }
+            
+            alpha = float.Max(alpha, bestEval);
+            if (alpha >= beta)
+                break;
         }
 
-        return (alpha, bestMove);
+        return (bestEval, bestMove);
+
+        void OrderMoves(List<(Move, float)> moveList)
+        {
+            for (var i = 0; i < moveList.Count; i++)
+            {
+                var (move, _) = moveList[i];
+                board.MakeMove(move);
+                var eval = Evaluate(board, isPlayer1);
+                board.UnmakeMove(move);
+                moveList[i] = (move, eval);
+            }
+
+            moveList.Sort((m1, m2) => m2.Item2.CompareTo(m1.Item2));
+        }
     }
     
     public void OnPlayerTurn(int turn, bool isPlayer1, Board board)
     {
+        transpositionTable.Clear();
+        
         Stats.NodesVisited = 0;
+        Stats.TranspositionTableHits = 0;
+
+        var piecesInOpposingCamp = Heuristics.PiecesInOpposingCamp(board, isPlayer1);
+        var depth = piecesInOpposingCamp switch
+        {
+            15 or 16 => 4,
+            17 => 5,
+            18 => 6,
+            19 => 7,
+            _ => 3
+        };
+        
         Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking");
-        var (eval, bestMove) = Search(board, isPlayer1, 3);
-        Console.WriteLine($"Eval: {eval} Best move: {bestMove} Nodes visited: {Stats.NodesVisited}");
+        var (eval, bestMove) = Search(board, isPlayer1, depth);
+        Console.WriteLine($"Transposition table entry count: {transpositionTable.Size}");
+        Console.WriteLine($"Eval: {eval} Best move: {bestMove} Nodes visited: {Stats.NodesVisited} TT hits: {Stats.TranspositionTableHits}");
             
         MovePicked?.Invoke(bestMove);
     }

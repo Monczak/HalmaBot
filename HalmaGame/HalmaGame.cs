@@ -69,6 +69,9 @@ public class HalmaGame
         gameState = GameState.InProgress;
         player1Turn = random.Next() % 2 == 0;
         // player1Turn = true;
+        
+        Board.InitZobrist(player1Turn);
+        
         turnCounter = 0;
         if (player1Turn)
             player1.OnPlayerTurn(turnCounter, true, Board);

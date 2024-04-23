@@ -11,7 +11,7 @@ public readonly struct Move(Coord fromSquare, Coord[] steps)
     {
         get
         {
-            Coord c = FromSquare;
+            var c = FromSquare;
             foreach (var step in steps)
                 c += step;
             return c;
@@ -41,5 +41,27 @@ public readonly struct Move(Coord fromSquare, Coord[] steps)
         }
 
         return builder.ToString();
+    }
+
+    public static Move FromString(string moveStr)
+    {
+        if (moveStr.StartsWith('J'))
+            moveStr = moveStr[1..];
+
+        var squares = moveStr.Split(">");
+        var fromSquare = new Coord(squares[0][0] - 'a', int.Parse(squares[0][1..]) - 1);
+        var steps = new List<Coord>();
+        var currentSquare = fromSquare;
+        for (var i = 1; i < squares.Length; i++)
+        {
+            var square = new Coord(squares[i][0] - 'a', int.Parse(squares[i][1..]) - 1);
+            var step = square - currentSquare;
+            steps.Add(step);
+            
+            currentSquare = square;
+        }
+        
+        var move = new Move(fromSquare, steps.ToArray());
+        return move;
     }
 }

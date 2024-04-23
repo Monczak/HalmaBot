@@ -12,6 +12,8 @@ public class Board
     private readonly bool[,] player2Camp;
 
     public int BoardSize { get; }
+    
+    public ulong ZobristKey { get; private set; }
 
     public Board(int boardSize = 16)
     {
@@ -31,6 +33,12 @@ public class Board
                 player2Camp[boardSize - x - 1, boardSize - y - 1] = true;
             }
         }
+    }
+
+    public void InitZobrist(bool isPlayer1)
+    {
+        Zobrist.Init(this);
+        ZobristKey = Zobrist.Hash(this, isPlayer1);
     }
 
     public IEnumerable<Coord> Coords
@@ -58,7 +66,7 @@ public class Board
 
     internal bool IsInBounds(Coord coord) => coord.X >= 0 && coord.X < BoardSize && coord.Y >= 0 && coord.Y < BoardSize;
 
-    private bool MovePiece(Coord fromSquare, Coord toSquare, bool midJump = false)
+    private bool MovePiece(Coord fromSquare, Coord toSquare)
     {
         // if (!IsMoveValid(fromSquare, toSquare, midJump)) 
         //     return false;
@@ -127,16 +135,17 @@ public class Board
 
     public bool MakeMove(Move move)
     {
-        var currentSquare = move.FromSquare;
+        var startSquare = move.FromSquare;
+        var currentSquare = startSquare;
+        var piece = this[startSquare];
         
         for (var y = 0; y < BoardSize; y++)
         for (var x = 0; x < BoardSize; x++)
             oldBoard[x, y] = board[x, y];
 
-        var midJump = false;
         foreach (var step in move.Steps)
         {
-            if (!MovePiece(currentSquare, currentSquare + step, midJump))
+            if (!MovePiece(currentSquare, currentSquare + step))
             {
                 for (var y = 0; y < BoardSize; y++)
                 for (var x = 0; x < BoardSize; x++)
@@ -145,16 +154,20 @@ public class Board
             }
 
             currentSquare += step;
-
-            midJump = true;
         }
+        
+        // if ((piece & Piece.Player1) != 0) ZobristKey ^= Zobrist.Player1Turn;
+        ZobristKey ^= Zobrist.Get(startSquare, piece);
+        ZobristKey ^= Zobrist.Get(currentSquare, piece);
 
         return true;
     }
 
     public bool UnmakeMove(Move move)
     {
-        var currentSquare = move.FinalSquare;
+        var startSquare = move.FinalSquare;
+        var currentSquare = startSquare;
+        var piece = this[currentSquare];
         
         for (var y = 0; y < BoardSize; y++)
         for (var x = 0; x < BoardSize; x++)
@@ -163,7 +176,7 @@ public class Board
         for (var i = move.Steps.Length - 1; i >= 0; i--)
         {
             var step = move.Steps[i];
-            if (!MovePiece(currentSquare, currentSquare - step, i > 0))
+            if (!MovePiece(currentSquare, currentSquare - step))
             {
                 for (var y = 0; y < BoardSize; y++)
                 for (var x = 0; x < BoardSize; x++)
@@ -173,6 +186,10 @@ public class Board
 
             currentSquare -= step;
         }
+        
+        // if ((piece & Piece.Player1) != 0) ZobristKey ^= Zobrist.Player1Turn;
+        // ZobristKey ^= Zobrist.Get(startSquare, piece);
+        // ZobristKey ^= Zobrist.Get(startSquare, piece);
 
         return true;
     }
