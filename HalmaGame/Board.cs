@@ -98,7 +98,7 @@ public class Board
         return camp[fromSquare.X, fromSquare.Y] && !camp[toSquare.X, toSquare.Y];
     }
     
-    internal GameState GameState 
+    public GameState GameState 
     {
         get
         {
@@ -159,10 +159,10 @@ public class Board
         for (var y = 0; y < BoardSize; y++)
         for (var x = 0; x < BoardSize; x++)
             oldBoard[x, y] = board[x, y];
-
-        var i = move.Steps.Length - 1;
-        foreach (var step in move.Steps.Reverse())
+        
+        for (var i = move.Steps.Length - 1; i >= 0; i--)
         {
+            var step = move.Steps[i];
             if (!MovePiece(currentSquare, currentSquare - step, i > 0))
             {
                 for (var y = 0; y < BoardSize; y++)
@@ -171,7 +171,7 @@ public class Board
                 return false;
             }
 
-            i--;
+            currentSquare -= step;
         }
 
         return true;

@@ -16,6 +16,7 @@ internal class Program
         };
         game.GameStateUpdated += (sender, state) =>
         {
+            Console.WriteLine(game.Board.Print());
             Console.WriteLine($"State updated: {state}");
         };
         

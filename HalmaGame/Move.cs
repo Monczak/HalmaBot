@@ -7,9 +7,27 @@ public readonly struct Move(Coord fromSquare, Coord[] steps)
     public Coord FromSquare { get; } = fromSquare;
     public Coord[] Steps { get; } = steps;
 
-    public Coord FinalSquare => Steps.Aggregate(FromSquare, (current, step) => current + step);
+    public Coord FinalSquare
+    {
+        get
+        {
+            Coord c = FromSquare;
+            foreach (var step in steps)
+                c += step;
+            return c;
+        }
+    }
 
-    public bool IsJump => Steps.Any(step => Math.Abs(step.X) == 2 || Math.Abs(step.Y) == 2);
+    public bool IsJump
+    {
+        get
+        {
+            foreach (var step in steps)
+                if (Math.Abs(step.X) == 2 || Math.Abs(step.Y) == 2)
+                    return true;
+            return false;
+        }
+    }
 
     public override string ToString()
     {

@@ -2,7 +2,16 @@ namespace HalmaBot;
 
 public static class MoveGenerator
 {
-    private static IEnumerable<Move> GenerateSimpleMoves(Board board, Coord square, bool isPlayer1)
+    private static HashSet<Coord> positions;
+    private static List<Move> moves;
+
+    static MoveGenerator()
+    {
+        positions = new HashSet<Coord>();
+        moves = new List<Move>();
+    }
+
+    private static void GenerateSimpleMoves(Board board, Coord square, bool isPlayer1)
     {
         for (var dy = -1; dy <= 1; dy++)
         {
@@ -18,19 +27,17 @@ public static class MoveGenerator
                 if (!board.IsMoveLegal(square, destPos)) continue;
                 if (board.MoveLeavesOpposingCamp(square, destPos, isPlayer1)) continue;
 
-                yield return new Move(square, [step]);
+                moves.Add(new Move(square, [step]));
             }
         }
     }
 
-    private static IEnumerable<Move> GenerateJumpMoves(Board board, Coord square, bool isPlayer1)
+    private static void GenerateJumpMoves(Board board, Coord square, bool isPlayer1)
     {
         var initialMove = new Move(square, []);
-        foreach (var move in GenerateJumps(initialMove, false))
-            yield return move;
-        yield break;
+        GenerateJumps(initialMove, false);
 
-        IEnumerable<Move> GenerateJumps(Move move, bool midJump)
+        void GenerateJumps(Move move, bool midJump)
         {
             for (var dy = -2; dy <= 2; dy += 2)
             {
@@ -50,7 +57,7 @@ public static class MoveGenerator
                         continue;
                     
                     // No backtracking
-                    var positions = new HashSet<Coord>();
+                    positions.Clear();
                     var curPos = move.FromSquare;
                     foreach (var s in move.Steps)
                     {
@@ -62,16 +69,16 @@ public static class MoveGenerator
                         continue;
                     
                     var jump = new Move(square, [..move.Steps, step]);
-                    yield return jump;
-                    foreach (var longerJumpMove in GenerateJumps(jump, true))
-                        yield return longerJumpMove;
+                    moves.Add(jump);
+                    GenerateJumps(jump, true);
                 }
             }
         }
     }
     
-    public static IEnumerable<Move> GenerateMoves(Board board, bool isPlayer1)
+    public static List<Move> GenerateMoves(Board board, bool isPlayer1)
     {
+        moves.Clear();
         for (var y = 0; y < board.BoardSize; y++)
         {
             for (var x = 0; x < board.BoardSize; x++)
@@ -79,12 +86,12 @@ public static class MoveGenerator
                 var coord = new Coord(x, y);
                 if ((board[coord] & Piece.Player1) != 0 && isPlayer1 || (board[coord] & Piece.Player2) != 0 && !isPlayer1)
                 {
-                    foreach (var move in GenerateSimpleMoves(board, coord, isPlayer1))
-                        yield return move;
-                    foreach (var move in GenerateJumpMoves(board, coord, isPlayer1))
-                        yield return move;
+                    GenerateSimpleMoves(board, coord, isPlayer1);
+                    GenerateJumpMoves(board, coord, isPlayer1);
                 }
             }
         }
+
+        return moves;
     }
 }
