@@ -6,6 +6,22 @@ public class TranspositionTable
     {
         public ulong ZobristKey { get; init; }
         public float Eval { get; init; }
+        public int Depth { get; init; }
+        public NodeType NodeType { get; init; }
+        public Move? Move { get; init; }
+    }
+
+    public enum QueryResult
+    {
+        Success,
+        Failed
+    }
+
+    public enum NodeType
+    {
+        Exact,
+        UpperBound,
+        LowerBound
     }
 
     private readonly Dictionary<ulong, Entry> entries = new();
@@ -16,19 +32,52 @@ public class TranspositionTable
         entries.Clear();
     }
 
-    public bool ContainsKey(ulong zobristKey)
+    public QueryResult Query(Board board, int depth, float alpha, float beta, out (Move? move, float eval) result)
     {
-        return entries.ContainsKey(zobristKey);
+        result.eval = 0;
+        result.move = null;
+        if (!entries.TryGetValue(board.ZobristKey, out var entry))
+        {
+            return QueryResult.Failed;
+        }
+
+        if (entry.Depth >= depth)
+        {
+            if (entry.NodeType == NodeType.Exact)
+            {
+                result.eval = entry.Eval;
+                result.move = entry.Move;
+                return QueryResult.Success;
+            }
+
+            if (entry.NodeType == NodeType.UpperBound && entry.Eval <= alpha)
+            {
+                result.eval = entry.Eval;
+                result.move = entry.Move;
+                return QueryResult.Success;
+            }
+            
+            if (entry.NodeType == NodeType.LowerBound && entry.Eval >= beta)
+            {
+                result.eval = entry.Eval;
+                result.move = entry.Move;
+                return QueryResult.Success;
+            }
+        }
+        
+        return QueryResult.Failed;
     }
 
-    public Entry Query(ulong zobristKey)
+    public void RecordState(Board board, float eval, int depth, NodeType evalType, Move? move)
     {
-        return entries[zobristKey];
-    }
-
-    public void RecordState(Board board, float eval)
-    {
-        entries[board.ZobristKey] = new Entry { ZobristKey = board.ZobristKey, Eval = eval };
+        entries[board.ZobristKey] = new Entry
+        {
+            ZobristKey = board.ZobristKey, 
+            Eval = eval,
+            Depth = depth,
+            NodeType = evalType,
+            Move = move
+        };
     }
 
     public void RecordStateForceHash(ulong hash, float eval)

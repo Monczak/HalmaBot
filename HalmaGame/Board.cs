@@ -41,20 +41,6 @@ public class Board
         ZobristKey = Zobrist.Hash(this, isPlayer1);
     }
 
-    public IEnumerable<Coord> Coords
-    {
-        get
-        {
-            for (var y = 0; y < BoardSize; y++)
-            {
-                for (var x = 0; x < BoardSize; x++)
-                {
-                    yield return new Coord(x, y);
-                }
-            }
-        }
-    }
-
     public bool IsInCamp(Coord coord, bool isPlayer1) =>
         isPlayer1 ? player1Camp[coord.X, coord.Y] : player2Camp[coord.X, coord.Y];
 
@@ -156,7 +142,7 @@ public class Board
             currentSquare += step;
         }
         
-        // if ((piece & Piece.Player1) != 0) ZobristKey ^= Zobrist.Player1Turn;
+        if ((piece & Piece.Player1) != 0) ZobristKey ^= Zobrist.Player1Turn;
         ZobristKey ^= Zobrist.Get(startSquare, piece);
         ZobristKey ^= Zobrist.Get(currentSquare, piece);
 
@@ -187,9 +173,9 @@ public class Board
             currentSquare -= step;
         }
         
-        // if ((piece & Piece.Player1) != 0) ZobristKey ^= Zobrist.Player1Turn;
-        // ZobristKey ^= Zobrist.Get(startSquare, piece);
-        // ZobristKey ^= Zobrist.Get(startSquare, piece);
+        if ((piece & Piece.Player1) != 0) ZobristKey ^= Zobrist.Player1Turn;
+        ZobristKey ^= Zobrist.Get(startSquare, piece);
+        ZobristKey ^= Zobrist.Get(currentSquare, piece);
 
         return true;
     }

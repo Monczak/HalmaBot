@@ -146,11 +146,16 @@ public class HalmaBot : IHalmaPlayer
     private (float eval, Move? bestMove) Search(Board board, bool isPlayer1, int depth, float alpha = float.NegativeInfinity, float beta = float.PositiveInfinity)
     {
         Move? bestMove = null;
-        float bestEval = float.NegativeInfinity;
         
         if (depth == 0)
             return (Evaluate(board, isPlayer1), null);
 
+        if (transpositionTable.Query(board, depth, alpha, beta, out var ttEval) == TranspositionTable.QueryResult.Success)
+        {
+            Stats.TranspositionTableHits++;
+            return (ttEval.eval, ttEval.move);
+        }
+        
         var moves = new List<(Move, float)>();
         foreach (var move in MoveGenerator.GenerateMoves(board, isPlayer1))
             moves.Add((move, 0));
@@ -163,44 +168,32 @@ public class HalmaBot : IHalmaPlayer
         
         OrderMoves(moves);
 
+        var evaluationBound = TranspositionTable.NodeType.UpperBound;
+
         foreach (var (move, _) in moves)
         {
             board.MakeMove(move);
-            
-            // float eval;
-            // // var hash = Zobrist.Hash(board, isPlayer1);
-            // if (transpositionTable.ContainsKey(board.ZobristKey))
-            // {
-            //     eval = transpositionTable.Query(board.ZobristKey).Eval;
-            //     Stats.TranspositionTableHits++;
-            // }
-            // else
-            // {
-            //     eval = -Search(board, !isPlayer1, depth - 1, -beta, -alpha).eval;
-            //     transpositionTable.RecordState(board, eval);
-            // }
-            
             var eval = -Search(board, !isPlayer1, depth - 1, -beta, -alpha).eval;
             board.UnmakeMove(move);
             Stats.NodesVisited++;
             
             if (eval >= beta)
             {
+                transpositionTable.RecordState(board, eval, depth, TranspositionTable.NodeType.LowerBound, move);
                 return (beta, move);
             }
 
-            if (eval > bestEval)
+            if (eval > alpha)
             {
-                bestEval = eval;
+                evaluationBound = TranspositionTable.NodeType.Exact;
+                alpha = eval;
                 bestMove = move;
             }
-            
-            alpha = float.Max(alpha, bestEval);
-            if (alpha >= beta)
-                break;
         }
+        
+        transpositionTable.RecordState(board, alpha, depth, evaluationBound, bestMove);
 
-        return (bestEval, bestMove);
+        return (alpha, bestMove);
 
         void OrderMoves(List<(Move, float)> moveList)
         {
@@ -231,7 +224,7 @@ public class HalmaBot : IHalmaPlayer
             17 => 5,
             18 => 6,
             19 => 7,
-            _ => 3
+            _ => 5
         };
         
         Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking");
