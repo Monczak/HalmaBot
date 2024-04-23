@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 
 namespace HalmaBot;
@@ -227,10 +228,17 @@ public class HalmaBot : IHalmaPlayer
             _ => 5
         };
         
-        Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking");
+        Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking ({depth} moves ahead)");
+
+        var stopwatch = new Stopwatch();
+        
+        stopwatch.Start();
         var (eval, bestMove) = Search(board, isPlayer1, depth);
-        Console.WriteLine($"Transposition table entry count: {transpositionTable.Size}");
-        Console.WriteLine($"Eval: {eval} Best move: {bestMove} Nodes visited: {Stats.NodesVisited} TT hits: {Stats.TranspositionTableHits}");
+        var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+        
+        Console.WriteLine($"Search took {elapsedSeconds:F3} s ({Stats.NodesVisited / elapsedSeconds:F1} nodes/s)");
+        Console.WriteLine($"Transposition table entry count: {transpositionTable.Size} | Hits: {Stats.TranspositionTableHits} ({(double)Stats.TranspositionTableHits / Stats.NodesVisited:P} of all nodes)");
+        Console.WriteLine($"Eval: {eval} | Best move: {bestMove} | Nodes visited: {Stats.NodesVisited}");
             
         MovePicked?.Invoke(bestMove);
     }

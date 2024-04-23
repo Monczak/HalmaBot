@@ -2,9 +2,8 @@
 
 public class TranspositionTable
 {
-    public struct Entry
+    private struct Entry
     {
-        public ulong ZobristKey { get; init; }
         public float Eval { get; init; }
         public int Depth { get; init; }
         public NodeType NodeType { get; init; }
@@ -72,16 +71,10 @@ public class TranspositionTable
     {
         entries[board.ZobristKey] = new Entry
         {
-            ZobristKey = board.ZobristKey, 
             Eval = eval,
             Depth = depth,
             NodeType = evalType,
             Move = move
         };
-    }
-
-    public void RecordStateForceHash(ulong hash, float eval)
-    {
-        entries[hash] = new Entry { ZobristKey = hash, Eval = eval };
     }
 }
