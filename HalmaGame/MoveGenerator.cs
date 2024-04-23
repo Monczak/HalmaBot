@@ -26,7 +26,7 @@ public static class MoveGenerator
 
                 if (!board.IsMoveLegal(square, destPos)) continue;
                 if (board.MoveLeavesOpposingCamp(square, destPos, isPlayer1)) continue;
-
+                
                 moves.Add(new Move(square, [step]));
             }
         }
@@ -53,7 +53,7 @@ public static class MoveGenerator
                         continue;
 
                     // No round-trips
-                    if (move.FinalSquare + step == square)
+                    if (move.FinalSquare.X + step.X == square.X && move.FinalSquare.Y + step.Y == square.Y)
                         continue;
                     
                     // No backtracking
