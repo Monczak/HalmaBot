@@ -1,5 +1,7 @@
+using System.Drawing;
 using System.Text;
 using System.Text.RegularExpressions;
+using Pastel;
 
 namespace HalmaBot;
 
@@ -210,6 +212,15 @@ public class Board
 
     public string Print()
     {
+        var checkerboardColor1 = Color.FromArgb(255, 240, 217, 181);
+        var checkerboardColor2 = Color.FromArgb(255, 181, 136, 99);
+        
+        var player1CampColor1 = Color.FromArgb(255, 227, 93, 53);
+        var player1CampColor2 = Color.FromArgb(255, 181, 75, 42);
+        
+        var player2CampColor1 = Color.FromArgb(255, 81, 125, 189);
+        var player2CampColor2 = Color.FromArgb(255, 58, 90, 135);
+        
         var builder = new StringBuilder();
         for (var y = 0; y < BoardSize; y++)
         {
@@ -217,12 +228,25 @@ public class Board
             for (var x = 0; x < BoardSize; x++)
             {
                 var coord = new Coord(x, y);
-                builder.Append(this[coord] switch
+                var isEven = (x + y) % 2 == 0;
+                var isInPlayer1Camp = IsInCamp(coord, true);
+                var isInPlayer2Camp = IsInCamp(coord, false);
+                var bgColor = (isEven, isInPlayer1Camp, isInPlayer2Camp) switch
                 {
-                    Piece.Player1 => "P",
-                    Piece.Player2 => "p",
-                    _ => "."
-                });
+                    (true, true, _) => player1CampColor1,
+                    (true, false, true) => player2CampColor1,
+                    (true, false, false) => checkerboardColor1,
+
+                    (false, true, _) => player1CampColor2,
+                    (false, false, true) => player2CampColor2,
+                    (false, false, false) => checkerboardColor2,
+                };
+                builder.Append((this[coord] switch
+                {
+                    Piece.Player1 => " \u25a0 ".Pastel(Color.DarkRed),
+                    Piece.Player2 => " \u25a0 ".Pastel(Color.DarkBlue),
+                    _ => "   "
+                }).PastelBg(bgColor));
             }
 
             builder.AppendLine();
@@ -230,12 +254,12 @@ public class Board
 
         builder.Append("     ");
         for (var i = 0; i < BoardSize; i++)
-            builder.Append('-');
+            builder.Append("---");
         builder.AppendLine();
         
         builder.Append("     ");
         for (var i = 0; i < BoardSize; i++)
-            builder.Append("abcdefghijklmnop"[i]);
+            builder.Append(" " + "abcdefghijklmnop"[i] + " ");
         builder.AppendLine();
 
         return builder.ToString();

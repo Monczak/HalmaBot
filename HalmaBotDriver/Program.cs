@@ -35,8 +35,23 @@ internal class Program
     
     public static void Main(string[] args)
     {
-        var player1 = new HalmaBot.HalmaBot();
-        var player2 = new HalmaBot.HalmaBot();
+        var player1 = new HalmaBot.HalmaBot()
+            .UseAlphaBetaPruning()
+            // .UseMoveOrdering()
+            .UseTranspositionTable()
+            .WithPiecesEnemyCanJumpOverWeight(0)
+            .WithSumOfDistancesWeight(1)
+            .WithPiecesUnableToJumpWeight(0)
+            .WithNominalSearchDepth(2);
+        
+        var player2 = new HalmaBot.HalmaBot()
+            .UseAlphaBetaPruning()
+            // .UseMoveOrdering()
+            .UseTranspositionTable()
+            .WithPiecesEnemyCanJumpOverWeight(0)
+            .WithSumOfDistancesWeight(1)
+            .WithPiecesUnableToJumpWeight(0)
+            .WithNominalSearchDepth(3);
         
         var game = new HalmaGame(player1, player2);
         Console.WriteLine(game.Board.Print());

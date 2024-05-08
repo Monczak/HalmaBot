@@ -3,12 +3,12 @@ namespace HalmaBot;
 public static class MoveGenerator
 {
     private static HashSet<Coord> positions;
-    private static List<Move> moves;
+    private static List<(Move, float)> moves;
 
     static MoveGenerator()
     {
         positions = new HashSet<Coord>();
-        moves = new List<Move>();
+        moves = new List<(Move, float)>();
     }
 
     private static void GenerateSimpleMoves(Board board, Coord square, bool isPlayer1)
@@ -27,7 +27,7 @@ public static class MoveGenerator
                 if (!board.IsMoveLegal(square, destPos)) continue;
                 if (board.MoveLeavesOpposingCamp(square, destPos, isPlayer1)) continue;
                 
-                moves.Add(new Move(square, [step]));
+                moves.Add((new Move(square, [step]), 0));
             }
         }
     }
@@ -69,14 +69,14 @@ public static class MoveGenerator
                         continue;
                     
                     var jump = new Move(square, [..move.Steps, step]);
-                    moves.Add(jump);
+                    moves.Add((jump, 0));
                     GenerateJumps(jump, true);
                 }
             }
         }
     }
     
-    public static List<Move> GenerateMoves(Board board, bool isPlayer1)
+    public static List<(Move, float)> GenerateMoves(Board board, bool isPlayer1)
     {
         moves.Clear();
         for (var y = 0; y < board.BoardSize; y++)

@@ -49,14 +49,17 @@ public class TranspositionTable
                 return QueryResult.Success;
             }
 
-            if (entry.NodeType == NodeType.UpperBound && entry.Eval <= alpha)
+            if (entry.NodeType == NodeType.UpperBound)
             {
-                result.eval = entry.Eval;
-                result.move = entry.Move;
-                return QueryResult.Success;
+                alpha = Math.Max(alpha, entry.Eval);
             }
             
-            if (entry.NodeType == NodeType.LowerBound && entry.Eval >= beta)
+            if (entry.NodeType == NodeType.LowerBound)
+            {
+                beta = Math.Min(beta, entry.Eval);
+            }
+
+            if (alpha >= beta)
             {
                 result.eval = entry.Eval;
                 result.move = entry.Move;
