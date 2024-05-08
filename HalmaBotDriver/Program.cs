@@ -37,20 +37,20 @@ internal class Program
     {
         var player1 = new HalmaBot.HalmaBot()
             .UseAlphaBetaPruning()
-            // .UseMoveOrdering()
+            .UseMoveOrdering()
             .UseTranspositionTable()
-            .WithPiecesEnemyCanJumpOverWeight(0)
-            .WithSumOfDistancesWeight(1)
-            .WithPiecesUnableToJumpWeight(0)
-            .WithNominalSearchDepth(2);
+            // .WithPiecesEnemyCanJumpOverWeight(0)
+            // .WithSumOfDistancesWeight(1)
+            // .WithPiecesUnableToJumpWeight(0)
+            .WithNominalSearchDepth(3);
         
         var player2 = new HalmaBot.HalmaBot()
             .UseAlphaBetaPruning()
-            // .UseMoveOrdering()
+            .UseMoveOrdering()
             .UseTranspositionTable()
-            .WithPiecesEnemyCanJumpOverWeight(0)
-            .WithSumOfDistancesWeight(1)
-            .WithPiecesUnableToJumpWeight(0)
+            // .WithPiecesEnemyCanJumpOverWeight(0)
+            // .WithSumOfDistancesWeight(1)
+            // .WithPiecesUnableToJumpWeight(0)
             .WithNominalSearchDepth(3);
         
         var game = new HalmaGame(player1, player2);

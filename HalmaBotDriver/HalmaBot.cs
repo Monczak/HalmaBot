@@ -21,7 +21,7 @@ public class HalmaBot : IHalmaPlayer
 
     private float sumOfDistancesWeight = 1f;
     private float piecesEnemyCanJumpOverWeight = -10f;
-    private float piecesInOpposingCampWeight = 100f;
+    private float piecesInOpposingCampWeight = 10000f;
     private float piecesUnableToJumpWeight = -100f;
     private float piecesNotInPlayerCampWeight = 100f;
 
@@ -237,7 +237,7 @@ public class HalmaBot : IHalmaPlayer
     private (float eval, Move? bestMove) Search(Board board, bool isPlayer1, int depth, float alpha = float.NegativeInfinity, float beta = float.PositiveInfinity)
     {
         Move? bestMove = null;
-        const float immediateWinScore = 100000;
+        const float immediateWinScore = 10000000;
 
         var alphaOrig = alpha;
         
@@ -249,9 +249,10 @@ public class HalmaBot : IHalmaPlayer
             Stats.TranspositionTableHits++;
             return (ttEval.eval, ttEval.move);
         }
-
-        var moves = new List<(Move, float)>(MoveGenerator.GenerateMoves(board, isPlayer1));
-        if (moves.Count == 0)
+        
+        Span<Move> moves = new Move[8192];
+        var moveCount = MoveGenerator.GenerateMoves(board, isPlayer1, ref moves);
+        if (moveCount == 0)
         {
             if ((board.GameState & GameState.Ended) != 0)
                 return (immediateWinScore + depth, null);
@@ -259,11 +260,12 @@ public class HalmaBot : IHalmaPlayer
         }
         
         if (useMoveOrdering)
-            OrderMoves(moves);
+            OrderMoves(board, isPlayer1, moves, moveCount);
         
         var maxEval = float.NegativeInfinity;
-        foreach (var (move, _) in moves)
+        for (int i = 0; i < moveCount; i++)
         {
+            var move = moves[i];
             board.MakeMove(move);
             var eval = -Search(board, !isPlayer1, depth - 1, -beta, -alpha).eval;
             board.UnmakeMove(move);
@@ -296,24 +298,60 @@ public class HalmaBot : IHalmaPlayer
         }
 
         return (maxEval, bestMove);
-
-        void OrderMoves(List<(Move, float)> moveList)
+    }
+    
+    private static void OrderMoves(Board board, bool isPlayer1, Span<Move> moveList, int moveCount)
+    {
+        var scores = new int[moveCount];
+        for (var i = 0; i < moveCount; i++)
         {
-            for (var i = 0; i < moveList.Count; i++)
+            var move = moveList[i];
+            var score = 0;
+                
+            var target = isPlayer1 ? new Vector2(board.BoardSize - 1, board.BoardSize - 1) : new Vector2(0, 0);
+            if ((new Vector2(move.FinalSquare.X, move.FinalSquare.Y) - target).LengthSquared() <
+                (new Vector2(move.FromSquare.X, move.FromSquare.Y) - target).LengthSquared())
+                score += 100;
+
+            scores[i] = score;
+        }
+
+        Quicksort(moveList, scores, 0, moveCount - 1);
+    }
+
+    private static void Quicksort(Span<Move> values, int[] scores, int low, int high)
+    {
+        while (true)
+        {
+            if (low < high)
             {
-                var (move, _) = moveList[i];
-                var score = 0;
-                
-                var target = isPlayer1 ? new Vector2(board.BoardSize - 1, board.BoardSize - 1) : new Vector2(0, 0);
-                if ((new Vector2(move.FinalSquare.X, move.FinalSquare.Y) - target).LengthSquared() <
-                    (new Vector2(move.FromSquare.X, move.FromSquare.Y) - target).LengthSquared())
-                    score += 100;
-                
-                moveList[i] = (move, score);
+                var pivotIndex = Partition(values, scores, low, high);
+                Quicksort(values, scores, low, pivotIndex - 1);
+                low = pivotIndex + 1;
+                continue;
             }
 
-            moveList.Sort((m1, m2) => m2.Item2.CompareTo(m1.Item2));
+            break;
         }
+    }
+
+    private static int Partition(Span<Move> values, int[] scores, int low, int high)
+    {
+        var pivotScore = scores[high];
+        var i = low - 1;
+
+        for (var j = low; j <= high - 1; j++)
+        {
+            if (scores[j] <= pivotScore) continue;
+            
+            i++;
+            (values[i], values[j]) = (values[j], values[i]);
+            (scores[i], scores[j]) = (scores[j], scores[i]);
+        }
+        (values[i + 1], values[high]) = (values[high], values[i + 1]);
+        (scores[i + 1], scores[high]) = (scores[high], scores[i + 1]);
+
+        return i + 1;
     }
     
     public void OnPlayerTurn(int turn, bool isPlayer1, Board board)

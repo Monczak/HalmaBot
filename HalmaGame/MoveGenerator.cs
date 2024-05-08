@@ -2,16 +2,10 @@ namespace HalmaBot;
 
 public static class MoveGenerator
 {
-    private static HashSet<Coord> positions;
-    private static List<(Move, float)> moves;
+    private static bool[]? positions = null;
+    private static int index;
 
-    static MoveGenerator()
-    {
-        positions = new HashSet<Coord>();
-        moves = new List<(Move, float)>();
-    }
-
-    private static void GenerateSimpleMoves(Board board, Coord square, bool isPlayer1)
+    private static void GenerateSimpleMoves(Board board, Coord square, bool isPlayer1, ref Span<Move> moves)
     {
         for (var dy = -1; dy <= 1; dy++)
         {
@@ -26,59 +20,66 @@ public static class MoveGenerator
 
                 if (!board.IsMoveLegal(square, destPos)) continue;
                 if (board.MoveLeavesOpposingCamp(square, destPos, isPlayer1)) continue;
-                
-                moves.Add((new Move(square, [step]), 0));
-            }
-        }
-    }
 
-    private static void GenerateJumpMoves(Board board, Coord square, bool isPlayer1)
-    {
-        var initialMove = new Move(square, []);
-        GenerateJumps(initialMove, false);
-
-        void GenerateJumps(Move move, bool midJump)
-        {
-            for (var dy = -2; dy <= 2; dy += 2)
-            {
-                for (var dx = -2; dx <= 2; dx += 2)
-                {
-                    if (dx == 0 && dy == 0) 
-                        continue;
-                    
-                    var step = new Coord(dx, dy);
-                    if (!board.IsJumpValid(move.FinalSquare, step, midJump))
-                        continue;
-                    if (board.MoveLeavesOpposingCamp(square, move.FinalSquare + step, isPlayer1))
-                        continue;
-
-                    // No round-trips
-                    if (move.FinalSquare.X + step.X == square.X && move.FinalSquare.Y + step.Y == square.Y)
-                        continue;
-                    
-                    // No backtracking
-                    positions.Clear();
-                    var curPos = move.FromSquare;
-                    foreach (var s in move.Steps)
-                    {
-                        curPos += s;
-                        positions.Add(curPos);
-                    }
-
-                    if (positions.Contains(move.FinalSquare + step))
-                        continue;
-                    
-                    var jump = new Move(square, [..move.Steps, step]);
-                    moves.Add((jump, 0));
-                    GenerateJumps(jump, true);
-                }
+                if (index < moves.Length) moves[index++] = new Move(square, [step]);
             }
         }
     }
     
-    public static List<(Move, float)> GenerateMoves(Board board, bool isPlayer1)
+    private static void GenerateJumps(Board board, bool isPlayer1, Coord square, Move move, bool midJump, ref Span<Move> moves)
     {
-        moves.Clear();
+        for (var dy = -2; dy <= 2; dy += 2)
+        {
+            for (var dx = -2; dx <= 2; dx += 2)
+            {
+                if (dx == 0 && dy == 0) 
+                    continue;
+                    
+                var step = new Coord(dx, dy);
+                if (!board.IsJumpValid(move.FinalSquare, step, midJump))
+                    continue;
+                if (board.MoveLeavesOpposingCamp(square, move.FinalSquare + step, isPlayer1))
+                    continue;
+
+                // No round-trips
+                if (move.FinalSquare.X + step.X == square.X && move.FinalSquare.Y + step.Y == square.Y)
+                    continue;
+                    
+                // No backtracking
+                var backtracked = false;
+                positions ??= new bool[board.BoardSize * board.BoardSize];
+                var curPos = move.FromSquare;
+                foreach (var s in move.Steps)
+                {
+                    curPos += s;
+                    if (positions[curPos.Y * board.BoardSize + curPos.X])
+                    {
+                        backtracked = true;
+                        break;
+                    }
+                    
+                    positions[curPos.Y * board.BoardSize + curPos.X] = true;
+                }
+
+                if (backtracked)
+                    continue;
+                    
+                var jump = new Move(square, [..move.Steps, step]);
+                if (index < moves.Length) moves[index++] = jump;
+                GenerateJumps(board, isPlayer1, square, jump, true, ref moves);
+            }
+        }
+    }
+
+    private static void GenerateJumpMoves(Board board, Coord square, bool isPlayer1, ref Span<Move> moves)
+    {
+        var initialMove = new Move(square, []);
+        GenerateJumps(board, isPlayer1, square, initialMove, false, ref moves);
+    }
+    
+    public static int GenerateMoves(Board board, bool isPlayer1, ref Span<Move> moves)
+    {
+        index = 0;
         for (var y = 0; y < board.BoardSize; y++)
         {
             for (var x = 0; x < board.BoardSize; x++)
@@ -86,12 +87,12 @@ public static class MoveGenerator
                 var coord = new Coord(x, y);
                 if ((board[coord] & Piece.Player1) != 0 && isPlayer1 || (board[coord] & Piece.Player2) != 0 && !isPlayer1)
                 {
-                    GenerateSimpleMoves(board, coord, isPlayer1);
-                    GenerateJumpMoves(board, coord, isPlayer1);
+                    GenerateSimpleMoves(board, coord, isPlayer1, ref moves);
+                    GenerateJumpMoves(board, coord, isPlayer1, ref moves);
                 }
             }
         }
 
-        return moves;
+        return index;
     }
 }
