@@ -147,31 +147,31 @@ public class HalmaBot : IHalmaPlayer
     private (float eval, Move? bestMove) Search(Board board, bool isPlayer1, int depth, float alpha = float.NegativeInfinity, float beta = float.PositiveInfinity)
     {
         Move? bestMove = null;
+        const float immediateWinScore = 1000000;
         
         if (depth == 0)
             return (Evaluate(board, isPlayer1), null);
 
-        if (transpositionTable.Query(board, depth, alpha, beta, out var ttEval) == TranspositionTable.QueryResult.Success)
-        {
-            Stats.TranspositionTableHits++;
-            return (ttEval.eval, ttEval.move);
-        }
-        
-        var moves = new List<(Move, float)>();
-        foreach (var move in MoveGenerator.GenerateMoves(board, isPlayer1))
-            moves.Add((move, 0));
-        if (moves.Count == 0)
+        // if (transpositionTable.Query(board, depth, alpha, beta, out var ttEval) == TranspositionTable.QueryResult.Success)
+        // {
+        //     Stats.TranspositionTableHits++;
+        //     return (ttEval.eval, ttEval.move);
+        // }
+
+        Span<Move> moves = new Move[8192];
+        MoveGenerator.GenerateMoves(board, isPlayer1, ref moves);
+        if (moves.Length == 0)
         {
             if ((board.GameState & GameState.Ended) != 0)
-                return (float.PositiveInfinity, null);
+                return (immediateWinScore + depth, null);
             return (float.NegativeInfinity, null);
         }
         
-        OrderMoves(moves);
+        OrderMoves(board, isPlayer1, ref moves);
 
         var evaluationBound = TranspositionTable.NodeType.UpperBound;
 
-        foreach (var (move, _) in moves)
+        foreach (var move in moves)
         {
             board.MakeMove(move);
             var eval = -Search(board, !isPlayer1, depth - 1, -beta, -alpha).eval;
@@ -195,20 +195,53 @@ public class HalmaBot : IHalmaPlayer
         transpositionTable.RecordState(board, alpha, depth, evaluationBound, bestMove);
 
         return (alpha, bestMove);
+    }
+    
+    private void OrderMoves(Board board, bool isPlayer1, ref Span<Move> moveList)
+    {
+        Span<float> scores = new float[moveList.Length];
+        var target = isPlayer1 
+            ? new Vector2(board.BoardSize - 1, board.BoardSize - 1) 
+            : new Vector2(0, 0);
 
-        void OrderMoves(List<(Move, float)> moveList)
+        for (var i = 0; i < moveList.Length; i++)
         {
-            for (var i = 0; i < moveList.Count; i++)
-            {
-                var (move, _) = moveList[i];
-                board.MakeMove(move);
-                var eval = Evaluate(board, isPlayer1);
-                board.UnmakeMove(move);
-                moveList[i] = (move, eval);
-            }
-
-            moveList.Sort((m1, m2) => m2.Item2.CompareTo(m1.Item2));
+            var move = moveList[i];
+            var finalSquare = move.FinalSquare;
+            scores[i] = -(target - new Vector2(finalSquare.X, finalSquare.Y)).LengthSquared();
         }
+
+        Quicksort(ref moveList, scores, 0, moveList.Length - 1);
+    }
+    
+    private static void Quicksort(ref Span<Move> values, Span<float> scores, int low, int high)
+    {
+        if (low < high)
+        {
+            var pivotIndex = Partition(ref values, scores, low, high);
+            Quicksort(ref values, scores, low, pivotIndex - 1);
+            Quicksort(ref values, scores, pivotIndex + 1, high);
+        }
+    }
+
+    private static int Partition(ref Span<Move> values, Span<float> scores, int low, int high)
+    {
+        var pivotScore = scores[high];
+        var i = low - 1;
+
+        for (var j = low; j <= high - 1; j++)
+        {
+            if (scores[j] > pivotScore)
+            {
+                i++;
+                (values[i], values[j]) = (values[j], values[i]);
+                (scores[i], scores[j]) = (scores[j], scores[i]);
+            }
+        }
+        (values[i + 1], values[high]) = (values[high], values[i + 1]);
+        (scores[i + 1], scores[high]) = (scores[high], scores[i + 1]);
+
+        return i + 1;
     }
     
     public void OnPlayerTurn(int turn, bool isPlayer1, Board board)
@@ -224,8 +257,7 @@ public class HalmaBot : IHalmaPlayer
             15 or 16 => 4,
             17 => 5,
             18 => 6,
-            19 => 7,
-            _ => 5
+            _ => 2
         };
         
         Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking ({depth} moves ahead)");
