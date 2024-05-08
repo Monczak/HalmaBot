@@ -11,6 +11,9 @@ public class HalmaBot : IHalmaPlayer
 
     private const int MoveBufferLength = 16384;
 
+    private readonly int nominalSearchDepth = 3;
+    private readonly Move[][] moveBuffers;
+
     private static class Stats
     {
         public static int NodesVisited { get; set; }
@@ -127,6 +130,13 @@ public class HalmaBot : IHalmaPlayer
             return (float)jumpLength / jumpCount;
         }
     }
+
+    public HalmaBot()
+    {
+        moveBuffers = new Move[nominalSearchDepth + 4][];
+        for (int i = 0; i < nominalSearchDepth + 4; i++)
+            moveBuffers[i] = new Move[MoveBufferLength];
+    }
     
     // TODO: Maybe use a genetic algorithm to tune the bot - determine the best multipliers for heuristics?
     private float EvaluateFromPlayer(Board board, bool isPlayer1)
@@ -159,7 +169,7 @@ public class HalmaBot : IHalmaPlayer
         //     return (ttEval.eval, ttEval.move);
         // }
 
-        Span<Move> moves = new Move[MoveBufferLength];
+        Span<Move> moves = moveBuffers[depth];
         MoveGenerator.GenerateMoves(board, isPlayer1, ref moves);
         if (moves.Length == 0)
         {
@@ -215,17 +225,17 @@ public class HalmaBot : IHalmaPlayer
             scores[i] = -(target - new Vector2(finalSquare.X, finalSquare.Y)).LengthSquared();
         }
 
-        Quicksort(ref moveList, scores, 0, moveList.Length - 1);
+        Quicksort(ref moveList, ref scores, 0, moveList.Length - 1);
     }
 
-    private static void Quicksort(ref Span<Move> values, Span<float> scores, int low, int high)
+    private static void Quicksort(ref Span<Move> values, ref Span<float> scores, int low, int high)
     {
         while (true)
         {
             if (low < high)
             {
-                var pivotIndex = Partition(ref values, scores, low, high);
-                Quicksort(ref values, scores, low, pivotIndex - 1);
+                var pivotIndex = Partition(ref values, ref scores, low, high);
+                Quicksort(ref values, ref scores, low, pivotIndex - 1);
                 low = pivotIndex + 1;
                 continue;
             }
@@ -234,7 +244,7 @@ public class HalmaBot : IHalmaPlayer
         }
     }
 
-    private static int Partition(ref Span<Move> values, Span<float> scores, int low, int high)
+    private static int Partition(ref Span<Move> values, ref Span<float> scores, int low, int high)
     {
         var pivotScore = scores[high];
         var i = low - 1;
@@ -264,10 +274,10 @@ public class HalmaBot : IHalmaPlayer
         var piecesInOpposingCamp = Heuristics.PiecesInOpposingCamp(board, isPlayer1);
         var depth = piecesInOpposingCamp switch
         {
-            15 or 16 => 4,
-            17 => 5,
-            18 => 6,
-            _ => 2
+            15 or 16 => nominalSearchDepth + 1,
+            17 => nominalSearchDepth + 2,
+            18 => nominalSearchDepth + 3,
+            _ => nominalSearchDepth
         };
         
         Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking ({depth} moves ahead)");
