@@ -9,7 +9,7 @@ public class HalmaBot : IHalmaPlayer
 
     private TranspositionTable transpositionTable = new();
 
-    private object? lockObj = new();
+    private const int MoveBufferLength = 16384;
 
     private static class Stats
     {
@@ -146,6 +146,7 @@ public class HalmaBot : IHalmaPlayer
     
     private (float eval, Move? bestMove) Search(Board board, bool isPlayer1, int depth, float alpha = float.NegativeInfinity, float beta = float.PositiveInfinity)
     {
+        var alphaOrig = alpha;
         Move? bestMove = null;
         const float immediateWinScore = 1000000;
         
@@ -158,7 +159,7 @@ public class HalmaBot : IHalmaPlayer
         //     return (ttEval.eval, ttEval.move);
         // }
 
-        Span<Move> moves = new Move[8192];
+        Span<Move> moves = new Move[MoveBufferLength];
         MoveGenerator.GenerateMoves(board, isPlayer1, ref moves);
         if (moves.Length == 0)
         {
@@ -169,8 +170,7 @@ public class HalmaBot : IHalmaPlayer
         
         OrderMoves(board, isPlayer1, ref moves);
 
-        var evaluationBound = TranspositionTable.NodeType.UpperBound;
-
+        var maxEval = float.NegativeInfinity;
         foreach (var move in moves)
         {
             board.MakeMove(move);
@@ -178,23 +178,27 @@ public class HalmaBot : IHalmaPlayer
             board.UnmakeMove(move);
             Stats.NodesVisited++;
             
-            if (eval >= beta)
+            if (eval > maxEval)
             {
-                transpositionTable.RecordState(board, eval, depth, TranspositionTable.NodeType.LowerBound, move);
-                return (beta, move);
-            }
-
-            if (eval > alpha)
-            {
-                evaluationBound = TranspositionTable.NodeType.Exact;
-                alpha = eval;
+                maxEval = eval;
                 bestMove = move;
             }
+
+            alpha = Math.Max(alpha, eval);
+            if (alpha >= beta)
+                break;
         }
         
-        transpositionTable.RecordState(board, alpha, depth, evaluationBound, bestMove);
+        TranspositionTable.NodeType nodeType;
+        if (maxEval <= alphaOrig)
+            nodeType = TranspositionTable.NodeType.UpperBound;
+        else if (maxEval >= beta)
+            nodeType = TranspositionTable.NodeType.LowerBound;
+        else
+            nodeType = TranspositionTable.NodeType.Exact;
+        transpositionTable.RecordState(board, maxEval, depth, nodeType, bestMove);
 
-        return (alpha, bestMove);
+        return (maxEval, bestMove);
     }
     
     private void OrderMoves(Board board, bool isPlayer1, ref Span<Move> moveList)
@@ -213,14 +217,20 @@ public class HalmaBot : IHalmaPlayer
 
         Quicksort(ref moveList, scores, 0, moveList.Length - 1);
     }
-    
+
     private static void Quicksort(ref Span<Move> values, Span<float> scores, int low, int high)
     {
-        if (low < high)
+        while (true)
         {
-            var pivotIndex = Partition(ref values, scores, low, high);
-            Quicksort(ref values, scores, low, pivotIndex - 1);
-            Quicksort(ref values, scores, pivotIndex + 1, high);
+            if (low < high)
+            {
+                var pivotIndex = Partition(ref values, scores, low, high);
+                Quicksort(ref values, scores, low, pivotIndex - 1);
+                low = pivotIndex + 1;
+                continue;
+            }
+
+            break;
         }
     }
 
