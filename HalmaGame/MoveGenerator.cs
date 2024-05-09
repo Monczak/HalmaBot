@@ -1,3 +1,6 @@
+using System.Drawing;
+using Pastel;
+
 namespace HalmaBot;
 
 public static class MoveGenerator
@@ -22,6 +25,7 @@ public static class MoveGenerator
                 if (board.MoveLeavesOpposingCamp(square, destPos, isPlayer1)) continue;
 
                 if (index < moves.Length) moves[index++] = new Move(square, [step]);
+                else Console.WriteLine("Move limit exceeded!".Pastel(Color.Red));
             }
         }
     }
@@ -65,7 +69,10 @@ public static class MoveGenerator
                     continue;
                     
                 var jump = new Move(square, [..move.Steps, step]);
+                
                 if (index < moves.Length) moves[index++] = jump;
+                else Console.WriteLine("Move limit exceeded!".Pastel(Color.Red));
+                
                 GenerateJumps(board, isPlayer1, square, jump, true, ref moves);
             }
         }
@@ -93,6 +100,7 @@ public static class MoveGenerator
             }
         }
 
+        // Console.WriteLine(index);
         moves = moves[..index];
     }
 }

@@ -7,13 +7,92 @@ public class HalmaBot : IHalmaPlayer
 {
     public event IHalmaPlayer.PickMoveDelegate? MovePicked;
 
-    private TranspositionTable transpositionTable = new();
+    private readonly TranspositionTable transpositionTable = new();
 
-    private const int MoveBufferLength = 16384;
+    private const int MoveBufferLength = 1024;
 
-    private readonly int nominalSearchDepth = 3;
+    private bool useAlphaBetaPruning = false;
+    private bool useMoveOrdering = false;
+    private bool useTranspositionTable = false;
+    private bool useDeepSearchInEndgame = false;
+
+    private float sumOfDistancesWeight = -1f;
+    private float piecesEnemyCanJumpOverWeight = -30f;
+    private float piecesUnableToJumpWeight = -40f;
+    private float piecesInOpposingCampWeight = 100f;
+    private float piecesNotInPlayerCampWeight = 100f;
+    
+    private int nominalSearchDepth = 4;
     private readonly Move[][] moveBuffers;
 
+    private string? logFilePath;
+
+    public HalmaBot UseLogging(string logFilePath)
+    {
+        this.logFilePath = logFilePath;
+        return this;
+    }
+
+    public HalmaBot UseAlphaBetaPruning()
+    {
+        useAlphaBetaPruning = true;
+        return this;
+    }
+    
+    public HalmaBot UseMoveOrdering()
+    {
+        useMoveOrdering = true;
+        return this;
+    }
+
+    public HalmaBot UseTranspositionTable()
+    {
+        useTranspositionTable = true;
+        return this;
+    }
+
+    public HalmaBot UseDeepSearchInEndgame()
+    {
+        useDeepSearchInEndgame = true;
+        return this;
+    }
+
+    public HalmaBot WithSumOfDistancesWeight(float weight)
+    {
+        sumOfDistancesWeight = weight;
+        return this;
+    }
+    
+    public HalmaBot WithPiecesEnemyCanJumpOverWeight(float weight)
+    {
+        piecesEnemyCanJumpOverWeight = weight;
+        return this;
+    }
+    
+    public HalmaBot WithPiecesInOpposingCampWeight(float weight)
+    {
+        piecesInOpposingCampWeight = weight;
+        return this;
+    }
+    
+    public HalmaBot WithPiecesUnableToJumpWeight(float weight)
+    {
+        piecesUnableToJumpWeight = weight;
+        return this;
+    }
+    
+    public HalmaBot WithPiecesNotInPlayerCampWeight(float weight)
+    {
+        piecesNotInPlayerCampWeight = weight;
+        return this;
+    }
+
+    public HalmaBot WithNominalSearchDepth(int depth)
+    {
+        nominalSearchDepth = depth;
+        return this;
+    }
+    
     private static class Stats
     {
         public static int NodesVisited { get; set; }
@@ -22,6 +101,12 @@ public class HalmaBot : IHalmaPlayer
     
     private static class Heuristics
     {
+        private static bool PieceBelongsTo(Board board, bool isPlayer1, Coord coord)
+        {
+            return isPlayer1 && (board[coord] & Piece.Player1) != 0 ||
+                   !isPlayer1 && (board[coord] & Piece.Player2) != 0;
+        }
+        
         public static float SumOfDistances(Board board, bool isPlayer1)
         {
             var distSum = 0f;
@@ -30,8 +115,7 @@ public class HalmaBot : IHalmaPlayer
                 for (var x = 0; x < board.BoardSize; x++)
                 {
                     var coord = new Coord(x, y);
-                    if (isPlayer1 && (board[coord] & Piece.Player1) != 0 ||
-                        !isPlayer1 && (board[coord] & Piece.Player2) != 0)
+                    if (PieceBelongsTo(board, isPlayer1, coord))
                     {
                         var target = isPlayer1 ? new Vector2(board.BoardSize - 1, board.BoardSize - 1) : new Vector2(0, 0);
                         distSum += (target - new Vector2(x, y)).LengthSquared();
@@ -39,38 +123,7 @@ public class HalmaBot : IHalmaPlayer
                 }    
             }
 
-            return -distSum;
-        }
-        
-        public static float PlayerProgress(Board board, bool isPlayer1)
-        {
-            var posSum = new Coord(0, 0);
-            var count = 0;
-            for (var y = 0; y < board.BoardSize; y++)
-            {
-                for (var x = 0; x < board.BoardSize; x++)
-                {
-                    var coord = new Coord(x, y);
-                    if (isPlayer1 && (board[coord] & Piece.Player1) != 0 ||
-                        !isPlayer1 && (board[coord] & Piece.Player2) != 0)
-                    {
-                        posSum += coord;
-                        count++;
-                    }
-                }    
-            }
-
-            var posAvg = new Vector2((float)posSum.X / count, (float)posSum.Y / count);
-            var startPoint = Vector2.Zero;
-            var endPoint = Vector2.One * (board.BoardSize - 1);
-            var diagProjection = Vector2.Dot(posAvg - startPoint, endPoint - startPoint) / Vector2.Dot(endPoint - startPoint, endPoint - startPoint) * (endPoint - startPoint);
-            var progress = (diagProjection - startPoint).Length() / (endPoint - startPoint).Length();
-            return isPlayer1 ? progress : 1 - progress;
-        }
-
-        public static float AvailableMoveCount(IReadOnlyCollection<Move> availableMoves)
-        {
-            return availableMoves.Count;
+            return distSum;
         }
 
         public static float PiecesInOpposingCamp(Board board, bool isPlayer1)
@@ -109,32 +162,87 @@ public class HalmaBot : IHalmaPlayer
 
         public static float PiecesEnemyCanJumpOver(Board board, bool isPlayer1)
         {
-            throw new NotImplementedException();    // TODO
-        }
-
-        public static float AvgJumpLength(IEnumerable<Move> availableMoves)
-        {
-            var jumpLength = 0;
-            var jumpCount = 0;
-            foreach (var move in availableMoves)
+            var pieceCount = 0;
+            for (var y = 0; y < board.BoardSize; y++)
             {
-                if (move.IsJump)
+                for (var x = 0; x < board.BoardSize; x++)
                 {
-                    jumpLength += move.Steps.Length;
-                    jumpCount++;
-                } 
+                    var coord = new Coord(x, y);
+                    if (!PieceBelongsTo(board, isPlayer1, coord)) continue;
+                    
+                    for (var dx = -1; dx <= 1; dx++)
+                    {
+                        for (var dy = -1; dy <= 1; dy++)
+                        {
+                            if (dx == 0 && dy == 0) 
+                                continue;
+                            if (x + dx < 0 || x + dx >= board.BoardSize || y + dy < 0 || y + dy >= board.BoardSize
+                                || x - dx < 0 || x - dx >= board.BoardSize || y - dy < 0 || y - dy >= board.BoardSize)
+                                continue;
+                            
+                            var delta = new Coord(dx, dy);
+                            if (PieceBelongsTo(board, !isPlayer1, coord + delta) && board[coord - delta] == Piece.None)
+                                pieceCount++;
+                        }
+                    }
+                }
             }
 
-            if (jumpCount == 0)
+            return pieceCount;
+        }
+
+        public static float PiecesUnableToJump(Board board, bool isPlayer1)
+        {
+            if (PiecesInOpposingCamp(board, isPlayer1) > 15)
                 return 0;
-            return (float)jumpLength / jumpCount;
+            
+            var pieceCount = 0;
+            for (var y = 0; y < board.BoardSize; y++)
+            {
+                for (var x = 0; x < board.BoardSize; x++)
+                {
+                    var coord = new Coord(x, y);
+                    if (!PieceBelongsTo(board, isPlayer1, coord)) continue;
+                    if (board.IsInCamp(coord, !isPlayer1)) continue;
+
+                    var canJump = false;
+                    for (var dx = -1; dx <= 1; dx++)
+                    {
+                        for (var dy = -1; dy <= 1; dy++)
+                        {
+                            if (dx == 0 && dy == 0) 
+                                continue;
+                            if (x + dx < 0 || x + dx >= board.BoardSize || y + dy < 0 || y + dy >= board.BoardSize
+                                || x - dx < 0 || x - dx >= board.BoardSize || y - dy < 0 || y - dy >= board.BoardSize)
+                                continue;
+                            if (x + dx * 2 < 0 || x + dx * 2 >= board.BoardSize || y + dy * 2 < 0 || y + dy * 2 >= board.BoardSize
+                                || x - dx * 2 < 0 || x - dx * 2 >= board.BoardSize || y - dy * 2 < 0 || y - dy * 2 >= board.BoardSize)
+                                continue;
+                            
+                            var delta = new Coord(dx, dy);
+                            if ((board[coord + delta] & Piece.Occupied) != 0 &&
+                                board[coord + delta + delta] == Piece.None)
+                            {
+                                canJump = true;
+                                break;
+                            }
+                        }
+
+                        if (canJump) break;
+                    }
+
+                    if (!canJump) pieceCount++;
+                }
+            }
+
+            return pieceCount;
         }
     }
 
     public HalmaBot()
     {
-        moveBuffers = new Move[nominalSearchDepth + 4][];
-        for (int i = 0; i < nominalSearchDepth + 4; i++)
+        moveBuffers = new Move[nominalSearchDepth + 6][];
+        for (var i = 0; i < moveBuffers.Length; i++)
             moveBuffers[i] = new Move[MoveBufferLength];
     }
     
@@ -142,10 +250,11 @@ public class HalmaBot : IHalmaPlayer
     private float EvaluateFromPlayer(Board board, bool isPlayer1)
     {
         return
-            Heuristics.SumOfDistances(board, isPlayer1) * 1f
-            // Heuristics.PlayerProgress(board, isPlayer1) * 1000f
-            + Heuristics.PiecesInOpposingCamp(board, isPlayer1) * 100f
-            + Heuristics.PiecesNotInPlayerCamp(board, isPlayer1) * 100f;
+            Heuristics.SumOfDistances(board, isPlayer1) * sumOfDistancesWeight
+            + Heuristics.PiecesEnemyCanJumpOver(board, isPlayer1) * piecesEnemyCanJumpOverWeight
+            + Heuristics.PiecesUnableToJump(board, isPlayer1) * piecesUnableToJumpWeight
+            + Heuristics.PiecesInOpposingCamp(board, isPlayer1) * piecesInOpposingCampWeight
+            + Heuristics.PiecesNotInPlayerCamp(board, isPlayer1) * piecesNotInPlayerCampWeight;
     }
 
     private float Evaluate(Board board, bool isPlayer1)
@@ -163,11 +272,11 @@ public class HalmaBot : IHalmaPlayer
         if (depth == 0)
             return (Evaluate(board, isPlayer1), null);
 
-        // if (transpositionTable.Query(board, depth, alpha, beta, out var ttEval) == TranspositionTable.QueryResult.Success)
-        // {
-        //     Stats.TranspositionTableHits++;
-        //     return (ttEval.eval, ttEval.move);
-        // }
+        if (useTranspositionTable && transpositionTable.Query(board, depth, alpha, beta, out var ttEval) == TranspositionTable.QueryResult.Success)
+        {
+            Stats.TranspositionTableHits++;
+            return (ttEval.eval, ttEval.move);
+        }
 
         Span<Move> moves = moveBuffers[depth];
         MoveGenerator.GenerateMoves(board, isPlayer1, ref moves);
@@ -178,7 +287,8 @@ public class HalmaBot : IHalmaPlayer
             return (float.NegativeInfinity, null);
         }
         
-        OrderMoves(board, isPlayer1, ref moves);
+        if (useMoveOrdering)
+            OrderMoves(board, isPlayer1, ref moves);
 
         var maxEval = float.NegativeInfinity;
         foreach (var move in moves)
@@ -194,20 +304,27 @@ public class HalmaBot : IHalmaPlayer
                 bestMove = move;
             }
 
-            alpha = Math.Max(alpha, eval);
-            if (alpha >= beta)
-                break;
+            if (useAlphaBetaPruning)
+            {
+                beta = Math.Min(beta, eval); // Seems to prune way faster than alpha = Math.Max(alpha, eval)
+                                             // and still yields the same results
+                if (alpha >= beta)
+                    break;
+            }
+        }
+
+        if (useTranspositionTable)
+        {
+            TranspositionTable.NodeType nodeType;
+            if (maxEval <= alphaOrig)
+                nodeType = TranspositionTable.NodeType.LowerBound;
+            else if (maxEval >= beta)
+                nodeType = TranspositionTable.NodeType.UpperBound;
+            else
+                nodeType = TranspositionTable.NodeType.Exact;
+            transpositionTable.RecordState(board, maxEval, depth, nodeType, bestMove);
         }
         
-        TranspositionTable.NodeType nodeType;
-        if (maxEval <= alphaOrig)
-            nodeType = TranspositionTable.NodeType.UpperBound;
-        else if (maxEval >= beta)
-            nodeType = TranspositionTable.NodeType.LowerBound;
-        else
-            nodeType = TranspositionTable.NodeType.Exact;
-        transpositionTable.RecordState(board, maxEval, depth, nodeType, bestMove);
-
         return (maxEval, bestMove);
     }
     
@@ -266,32 +383,49 @@ public class HalmaBot : IHalmaPlayer
     
     public void OnPlayerTurn(int turn, bool isPlayer1, Board board)
     {
+        if (logFilePath is not null && turn is 0 or 1)
+        {
+            if (File.Exists(logFilePath))
+                File.Delete(logFilePath);
+            
+            using var file = File.AppendText(logFilePath);
+            file.WriteLine($"Turn;ElapsedSeconds;NodesPerSecond;TTSize;TTHits;Eval;BestMoveEval;BestMove;NodesVisited");
+        }
+        
         transpositionTable.Clear();
         
         Stats.NodesVisited = 0;
         Stats.TranspositionTableHits = 0;
 
         var piecesInOpposingCamp = Heuristics.PiecesInOpposingCamp(board, isPlayer1);
-        var depth = piecesInOpposingCamp switch
+        var depth = useDeepSearchInEndgame ? piecesInOpposingCamp switch
         {
-            15 or 16 => nominalSearchDepth + 1,
-            17 => nominalSearchDepth + 2,
-            18 => nominalSearchDepth + 3,
+            14 or 15 => nominalSearchDepth + 2,
+            16 => nominalSearchDepth + 3,
+            17 => nominalSearchDepth + 4,
+            18 => nominalSearchDepth + 5,
             _ => nominalSearchDepth
-        };
+        } : nominalSearchDepth;
         
-        Console.WriteLine($"Player {(isPlayer1 ? "1" : "2")} thinking ({depth} moves ahead)");
-
         var stopwatch = new Stopwatch();
-        
         stopwatch.Start();
-        var (eval, bestMove) = Search(board, isPlayer1, depth);
+
+        var eval = Evaluate(board, isPlayer1);
+        Console.WriteLine($"Searching at {depth} ply | Eval: {eval}");
+        var (bestMoveEval, bestMove) = Search(board, isPlayer1, depth);
+        
         var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
         
         Console.WriteLine($"Search took {elapsedSeconds:F3} s ({Stats.NodesVisited / elapsedSeconds:F1} nodes/s)");
         Console.WriteLine($"Transposition table entry count: {transpositionTable.Size} | Hits: {Stats.TranspositionTableHits} ({(double)Stats.TranspositionTableHits / Stats.NodesVisited:P} of all nodes)");
-        Console.WriteLine($"Eval: {eval} | Best move: {bestMove} | Nodes visited: {Stats.NodesVisited}");
-            
+        Console.WriteLine($"Best move ({bestMoveEval}): {bestMove} | Nodes visited: {Stats.NodesVisited}");
+
+        if (logFilePath is not null)
+        {
+            using var file = File.AppendText(logFilePath);
+            file.WriteLine($"{turn / 2};{elapsedSeconds:F3};{Stats.NodesVisited / elapsedSeconds:F1};{transpositionTable.Size};{Stats.TranspositionTableHits};{eval};{bestMoveEval};{bestMove};{Stats.NodesVisited}");
+        }
+        
         MovePicked?.Invoke(bestMove);
     }
 }

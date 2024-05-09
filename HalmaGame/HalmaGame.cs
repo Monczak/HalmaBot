@@ -16,14 +16,13 @@ public class HalmaGame
     public Board Board { get; } = new();
     private GameState gameState;
 
-    public readonly record struct BoardUpdatedEventArgs(int Turn, Board Board);
+    public readonly record struct BoardUpdatedEventArgs(int Turn, Board Board, Move? PickedMove);
     
     public event EventHandler<BoardUpdatedEventArgs>? BoardUpdated;
     public event EventHandler<GameState>? GameStateUpdated;
     
     private readonly ConcurrentQueue<Task> taskQueue = new();
-
-    // TODO: Optimize this for memory allocations
+    
     public HalmaGame(IHalmaPlayer player1, IHalmaPlayer player2, Random? random = null, string? gameStr = null)
     {
         this.random = random ?? new Random();
@@ -37,11 +36,16 @@ public class HalmaGame
             {
                 await EnqueueTask(() =>
                 {
-                    if (HandleMove(move))
+                    var continueGame = HandleMove(move);
+                    BoardUpdated?.Invoke(this, new BoardUpdatedEventArgs(turnCounter, Board, move));
+                    if (continueGame)
                     {
-                        BoardUpdated?.Invoke(this, new BoardUpdatedEventArgs(turnCounter, Board));
                         player1Turn = false;
                         player2.OnPlayerTurn(++turnCounter, player1Turn, Board);
+                    }
+                    else
+                    {
+                        GameStateUpdated?.Invoke(this, gameState);
                     }
                 });
             }
@@ -53,11 +57,16 @@ public class HalmaGame
             {
                 await EnqueueTask(() =>
                 {
-                    if (HandleMove(move))
+                    var continueGame = HandleMove(move);
+                    BoardUpdated?.Invoke(this, new BoardUpdatedEventArgs(turnCounter, Board, move));
+                    if (continueGame)
                     {
-                        BoardUpdated?.Invoke(this, new BoardUpdatedEventArgs(turnCounter, Board));
                         player1Turn = true;
                         player1.OnPlayerTurn(++turnCounter, player1Turn, Board);
+                    }
+                    else
+                    {
+                        GameStateUpdated?.Invoke(this, gameState);
                     }
                 });
             }
@@ -113,7 +122,6 @@ public class HalmaGame
             var newState = Board.GameState;
             if (newState != gameState)
             {
-                GameStateUpdated?.Invoke(this, newState);
                 gameState = newState;
                 return false;
             }
