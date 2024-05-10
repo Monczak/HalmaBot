@@ -7,12 +7,14 @@ internal class Program
         var player1 = new HalmaBot.HalmaBot()
             .UseAlphaBetaPruning()
             .UseMoveOrdering()
-            .WithNominalSearchDepth(4)
+            .UseDeepSearchInEndgame()
+            .WithNominalSearchDepth(2)
             .UseLogging("Player1.csv");
         var player2 = new HalmaBot.HalmaBot()
             .UseAlphaBetaPruning()
             .UseMoveOrdering()
-            .WithNominalSearchDepth(4)
+            .UseDeepSearchInEndgame()
+            .WithNominalSearchDepth(2)
             .UseLogging("Player2.csv");
         
         var game = new HalmaGame(player1, player2);
